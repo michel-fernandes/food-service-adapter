@@ -2,10 +2,13 @@ package com.food.ordering.system.order.service.domain.entity;
 
 import com.food.ordering.system.domain.entity.AggregateRoot;
 import com.food.ordering.system.domain.valueobject.*;
+import com.food.ordering.system.order.service.domain.exception.OrderDomainException;
+import com.food.ordering.system.order.service.domain.valueobjects.OrderItemId;
 import com.food.ordering.system.order.service.domain.valueobjects.StreetAddress;
 import com.food.ordering.system.order.service.domain.valueobjects.TrackingId;
 
 import java.util.List;
+import java.util.UUID;
 
 public class Order extends AggregateRoot<OrderId> {
     private final CustomerId customerId;
@@ -30,39 +33,73 @@ public class Order extends AggregateRoot<OrderId> {
         failureMessages = builder.failureMessages;
     }
 
+    public void initializeOrder(){
+        setId(new OrderId(UUID.randomUUID()));
+        trackingId = new TrackingId(UUID.randomUUID());
+        orderStatus = OrderStatus.PENDING;
+        initializerOrderItem();
+    }
+
+    private void initializerOrderItem() {
+        long itemId = 1;
+        for (OrderItem orderItem: items){
+            orderItem.initializeOrderItem(super.getId(), new OrderItemId(itemId++));
+        }
+    }
+    private void validateOrde() {
+        validateInitialOrder();
+        validateTotalPrice();
+        validateItemsPrice();
+    }
+    private void validateInitialOrder() {
+        if(orderStatus != null || getId() != null)
+            throw new OrderDomainException("Order is not in correct state for initialisation!");
+    }
+    private void validateTotalPrice() {
+        if (price == null || !price.isGreaterThanZero())
+            throw new OrderDomainException("Total price must be greater than zero!");
+    }
+    private void validateItemsPrice() {
+        Money orderItemTotal = items.stream().map(orderItem -> {
+            validateItemPrice(orderItem);
+            return orderItem.getSubTotal();
+        }).reduce(Money.ZERO, Money::add);
+
+        if(!price.equals(orderItemTotal))
+            throw new OrderDomainException("Total price: %f must be equal to sum of items price: %f!"
+                    .formatted(price.getAmount(), orderItemTotal.getAmount()));
+    }
+
+    private void validateItemPrice(OrderItem orderItem) {
+        if(!orderItem.isPriceValid())
+            throw new OrderDomainException("Order item price: %f is not valid for product: %s!".formatted(
+                    orderItem.getPrice().getAmount(), orderItem.getProduct().getId().getValue()));
+    }
 
     public CustomerId getCustomerId() {
         return customerId;
     }
-
     public RestaurantId getRestaurantId() {
         return restaurantId;
     }
-
     public StreetAddress getDeliveryAddress() {
         return deliveryAddress;
     }
-
     public Money getPrice() {
         return price;
     }
-
     public List<OrderItem> getItems() {
         return items;
     }
-
     public TrackingId getTrackingId() {
         return trackingId;
     }
-
     public OrderStatus getOrderStatus() {
         return orderStatus;
     }
-
     public List<String> getFailureMessages() {
         return failureMessages;
     }
-
     public static final class Builder {
         private OrderId orderId;
         private CustomerId customerId;
@@ -73,59 +110,47 @@ public class Order extends AggregateRoot<OrderId> {
         private TrackingId trackingId;
         private OrderStatus orderStatus;
         private List<String> failureMessages;
-
         private Builder() {
         }
-
         public static Builder builder() {
             return new Builder();
         }
-
         public Builder orderId(OrderId val) {
             orderId = val;
             return this;
         }
-
         public Builder customerId(CustomerId val) {
             customerId = val;
             return this;
         }
-
         public Builder restaurantId(RestaurantId val) {
             restaurantId = val;
             return this;
         }
-
         public Builder deliveryAddress(StreetAddress val) {
             deliveryAddress = val;
             return this;
         }
-
         public Builder price(Money val) {
             price = val;
             return this;
         }
-
         public Builder items(List<OrderItem> val) {
             items = val;
             return this;
         }
-
         public Builder trackingId(TrackingId val) {
             trackingId = val;
             return this;
         }
-
         public Builder orderStatus(OrderStatus val) {
             orderStatus = val;
             return this;
         }
-
         public Builder failureMessages(List<String> val) {
             failureMessages = val;
             return this;
         }
-
         public Order build() {
             return new Order(this);
         }
